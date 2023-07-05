@@ -9,7 +9,7 @@ import { release, upload, GitHubReleaser } from "./github";
 import { getOctokit } from "@actions/github";
 import { setFailed, setOutput } from "@actions/core";
 import { GitHub, getOctokitOptions } from "@actions/github/lib/utils";
-import * as fs from 'fs';
+import * as fs from "fs";
 
 import { env } from "process";
 
@@ -29,15 +29,14 @@ async function run() {
         console.warn(pattern);
         // Rename file using oldName:newName notation
         if (pattern.includes(":")) {
-          let names = pattern.split(':');
+          let names = pattern.split(":");
           let oldName = names[0];
           let newName = names[1];
           fs.rename(oldName, newName, () => {
-              console.warn(`🤔Renamed file from '${oldName}' to '${newName}!`);
+            console.warn(`🤔Renamed file from '${oldName}' to '${newName}!`);
           });
-        }
-        else {
-          console.warn(`🤔 Pattern '${pattern}' does not match any files.`)
+        } else {
+          console.warn(`🤔 Pattern '${pattern}' does not match any files.`);
         }
       });
       if (patterns.length > 0 && config.input_fail_on_unmatched_files) {
@@ -80,7 +79,7 @@ async function run() {
           // Use the new name instead to upload
           files.push(file.split(":")[1]);
         }
-      })
+      });
       if (files.length == 0) {
         console.warn(`🤔 ${config.input_files} did not include valid files.`);
       }

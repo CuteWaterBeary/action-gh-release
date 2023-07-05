@@ -71,13 +71,9 @@ export interface Releaser {
     repo: string;
     ref: string;
     sha: string;
-  }) : Promise<any>;
+  }): Promise<any>;
 
-  deleteRef(params: {
-    owner: string;
-    repo: string;
-    ref: string;
-  }) : Promise<any>;
+  deleteRef(params: { owner: string; repo: string; ref: string }): Promise<any>;
 }
 
 export class GitHubReleaser implements Releaser {
@@ -140,7 +136,7 @@ export class GitHubReleaser implements Releaser {
     repo: string;
     ref: string;
     sha: string;
-  }) : Promise<any> {
+  }): Promise<any> {
     return this.github.rest.git.createRef(params);
   }
 
@@ -148,7 +144,7 @@ export class GitHubReleaser implements Releaser {
     owner: string;
     repo: string;
     ref: string;
-  }) : Promise<any> {
+  }): Promise<any> {
     return this.github.rest.git.deleteRef(params);
   }
 }
@@ -235,7 +231,7 @@ export const release = async (
 
   const discussion_category_name = config.input_discussion_category_name;
   const generate_release_notes = config.input_generate_release_notes;
-  
+
   if (config.input_draft) {
     // you can't get a an existing draft by tag
     // so we must find one in the list of all releases
@@ -249,25 +245,28 @@ export const release = async (
       }
     }
   }
-  
 
-  let existingRelease: Release|null = null;
+  let existingRelease: Release | null = null;
   try {
-    existingRelease = (await releaser.getReleaseByTag({
-      owner,
-      repo,
-      tag,
-    })).data;
+    existingRelease = (
+      await releaser.getReleaseByTag({
+        owner,
+        repo,
+        tag,
+      })
+    ).data;
     console.log(`Found a release with tag ${tag} !`);
-  }catch(e){
-    if(e.status === 404){
-        console.log(`No release with tag ${tag} found`);
-    }else{
-      console.log(`An error occured while fetching the release for the tag ${tag} !`);
+  } catch (e) {
+    if (e.status === 404) {
+      console.log(`No release with tag ${tag} found`);
+    } else {
+      console.log(
+        `An error occured while fetching the release for the tag ${tag} !`
+      );
       throw e;
     }
   }
-  if(existingRelease==null){
+  if (existingRelease == null) {
     const tag_name = tag;
     const name = config.input_name || tag;
     const body = releaseBody(config);
@@ -306,7 +305,7 @@ export const release = async (
       );
       return release(config, releaser, maxRetries - 1);
     }
-  }else{
+  } else {
     console.log(`Updating release with tag ${tag}..`);
     const release_id = existingRelease.id;
     let target_commitish: string;
@@ -335,7 +334,7 @@ export const release = async (
       } else {
         target_commitish = existingRelease.target_commitish;
       }
-
+    }
     const tag_name = tag;
     const name = config.input_name || existingRelease.name || tag;
     // revisit: support a new body-concat-strategy input for accumulating
@@ -360,26 +359,28 @@ export const release = async (
         ? config.input_prerelease
         : existingRelease.prerelease;
 
-    if(config.input_update_tag){
+    if (config.input_update_tag) {
       await releaser.deleteRef({
         owner,
         repo,
-        ref: "tags/"+existingRelease.tag_name,
+        ref: "tags/" + existingRelease.tag_name,
       });
       await releaser.createRef({
         owner,
         repo,
-        ref: "refs/tags/"+existingRelease.tag_name,
-        sha: config.github_sha
-      })
+        ref: "refs/tags/" + existingRelease.tag_name,
+        sha: config.github_sha,
+      });
 
-      console.log(`Updated ref/tags/${existingRelease.tag_name} to ${config.github_sha}`);
-      
+      console.log(
+        `Updated ref/tags/${existingRelease.tag_name} to ${config.github_sha}`
+      );
+
       // give github the time to draft the release before updating it
       // Else, I think we would have a race condition with github to update the release
       await sleep(2000);
     }
-    
+
     const release = await releaser.updateRelease({
       owner,
       repo,
@@ -398,5 +399,5 @@ export const release = async (
 };
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
