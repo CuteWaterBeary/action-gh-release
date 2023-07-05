@@ -251,7 +251,7 @@ export const release = async (
 
   const discussion_category_name = config.input_discussion_category_name;
   const generate_release_notes = config.input_generate_release_notes;
-  
+
   if (config.input_draft) {
     // you can't get a an existing draft by tag
     // so we must find one in the list of all releases
@@ -265,9 +265,18 @@ export const release = async (
       }
     }
   }
-  
 
-  let existingRelease: Release|null = null;
+
+
+
+
+
+
+
+
+  let existingRelease: Release | null = null;
+
+
   try {
     existingRelease = (await releaser.getReleaseByTag({
       owner,
@@ -275,6 +284,8 @@ export const release = async (
       tag,
     })).data;
     console.log(`Found a release with tag ${tag} !`);
+
+
   }catch(e){
     if(e.status === 404){
         console.log(`No release with tag ${tag} found`);
@@ -283,6 +294,36 @@ export const release = async (
       throw e;
     }
   }
+
+  const release_id = existingRelease.data.id;
+  let is_latest_release = false;
+
+  try {
+    let latestRelease = await releaser.getLatestRelease({
+      owner,
+      repo,
+    });
+
+    is_latest_release = release_id === latestRelease.data.id;
+  } catch (error) {
+    // If we couldn't find the latest release then this is the latest release,
+    // as long as it's not a draft or a prerelease.
+    if (error.status == 404) {
+      is_latest_release =
+        config.input_draft !== true && config.input_prerelease !== true;
+    } else {
+      console.log(
+        `⚠️ Unexpected error fetching latest Github release for repository ${config.github_repository}: ${error}`
+      );
+      // throw a new error without a status code to avoid creating a new release
+      // in the code that catches this error.
+      throw "Error fetching latest github release";
+    }
+    }
+  }
+
+
+
   if(existingRelease==null){
     const tag_name = tag;
     const name = config.input_name || tag;
@@ -325,6 +366,12 @@ export const release = async (
   }else{
     console.log(`Updating release with tag ${tag}..`);
     const release_id = existingRelease.id;
+
+
+
+
+
+
     let target_commitish: string;
     if (
       config.input_target_commitish &&
@@ -394,12 +441,12 @@ export const release = async (
       })
 
       console.log(`Updated ref/tags/${existingRelease.tag_name} to ${config.github_sha}`);
-      
+
       // give github the time to draft the release before updating it
       // Else, I think we would have a race condition with github to update the release
       await sleep(2000);
     }
-    
+
     const release = await releaser.updateRelease({
       owner,
       repo,
