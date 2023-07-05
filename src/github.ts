@@ -65,6 +65,19 @@ export interface Releaser {
     owner: string;
     repo: string;
   }): AsyncIterableIterator<{ data: Release[] }>;
+
+  createRef(params: {
+    owner: string;
+    repo: string;
+    ref: string;
+    sha: string;
+  }) : Promise<any>;
+
+  deleteRef(params: {
+    owner: string;
+    repo: string;
+    ref: string;
+  }) : Promise<any>;
 }
 
 export class GitHubReleaser implements Releaser {
@@ -120,6 +133,23 @@ export class GitHubReleaser implements Releaser {
     return this.github.paginate.iterator(
       this.github.rest.repos.listReleases.endpoint.merge(updatedParams)
     );
+  }
+
+  createRef(params: {
+    owner: string;
+    repo: string;
+    ref: string;
+    sha: string;
+  }) : Promise<any> {
+    return this.github.rest.git.createRef(params);
+  }
+
+  deleteRef(params: {
+    owner: string;
+    repo: string;
+    ref: string;
+  }) : Promise<any> {
+    return this.github.rest.git.deleteRef(params);
   }
 }
 
@@ -198,18 +228,91 @@ export const release = async (
 
   const discussion_category_name = config.input_discussion_category_name;
   const generate_release_notes = config.input_generate_release_notes;
-  try {
-    let existingRelease: Release | undefined;
+  
+  if (config.input_draft) {
+    // you can't get a an existing draft by tag
+    // so we must find one in the list of all releases
     for await (const response of releaser.allReleases({
       owner,
       repo,
     })) {
-      existingRelease = response.data.find(
-        (release) => release.tag_name === tag
-      );
-      if (existingRelease !== undefined) {
-        break;
+      let release = response.data.find((release) => release.tag_name === tag);
+      if (release) {
+        return release;
       }
+    }
+  }
+  
+
+  let existingRelease: Release|null = null;
+  try {
+    existingRelease = (await releaser.getReleaseByTag({
+      owner,
+      repo,
+      tag,
+    })).data;
+    console.log(`Found a release with tag ${tag} !`);
+  }catch(e){
+    if(e.status === 404){
+        console.log(`No release with tag ${tag} found`);
+    }else{
+      console.log(`An error occured while fetching the release for the tag ${tag} !`);
+      throw e;
+    }
+  }
+  if(existingRelease==null){
+    const tag_name = tag;
+    const name = config.input_name || tag;
+    const body = releaseBody(config);
+    const draft = config.input_draft;
+    const prerelease = config.input_prerelease;
+    const target_commitish = config.input_target_commitish;
+    let commitMessage: string = "";
+    if (target_commitish) {
+      commitMessage = ` using commit "${target_commitish}"`;
+    }
+    console.log(
+      `👩‍🏭 Creating new GitHub release for tag ${tag_name}${commitMessage}...`
+    );
+    try {
+      let release = await releaser.createRelease({
+        owner,
+        repo,
+        tag_name,
+        name,
+        body,
+        draft,
+        prerelease,
+        target_commitish,
+        discussion_category_name,
+        generate_release_notes,
+      });
+      return release.data;
+    } catch (error) {
+      // presume a race with competing metrix runs
+      console.log(
+        `⚠️ GitHub release failed with status: ${
+          error.status
+        }\n${JSON.stringify(error.response.data.errors)}\nretrying... (${
+          maxRetries - 1
+        } retries remaining)`
+      );
+      return release(config, releaser, maxRetries - 1);
+    }
+  }else{
+    console.log(`Updating release with tag ${tag}..`);
+    const release_id = existingRelease.id;
+    let target_commitish: string;
+    if (
+      config.input_target_commitish &&
+      config.input_target_commitish !== existingRelease.target_commitish
+    ) {
+      console.log(
+        `Updating commit from "${existingRelease.target_commitish}" to "${config.input_target_commitish}"`
+      );
+      target_commitish = config.input_target_commitish;
+    } else {
+      target_commitish = existingRelease.target_commitish;
     }
     if (existingRelease !== undefined) {
       const release_id = existingRelease.id;
@@ -226,79 +329,67 @@ export const release = async (
         target_commitish = existingRelease.target_commitish;
       }
 
-      const tag_name = tag;
-      const name = config.input_name || existingRelease.name || tag;
-      // revisit: support a new body-concat-strategy input for accumulating
-      // body parts as a release gets updated. some users will likely want this while
-      // others won't previously this was duplicating content for most which
-      // no one wants
-      const workflowBody = releaseBody(config) || "";
-      const existingReleaseBody = existingRelease.body || "";
-      let body: string;
-      if (config.input_append_body && workflowBody && existingReleaseBody) {
-        body = existingReleaseBody + "\n" + workflowBody;
-      } else {
-        body = workflowBody || existingReleaseBody;
-      }
-
-      const draft =
-        config.input_draft !== undefined
-          ? config.input_draft
-          : existingRelease.draft;
-      const prerelease =
-        config.input_prerelease !== undefined
-          ? config.input_prerelease
-          : existingRelease.prerelease;
-
-      const release = await releaser.updateRelease({
-        owner,
-        repo,
-        release_id,
-        tag_name,
-        target_commitish,
-        name,
-        body,
-        draft,
-        prerelease,
-        discussion_category_name,
-        generate_release_notes,
-      });
-      return release.data;
+    const tag_name = tag;
+    const name = config.input_name || existingRelease.name || tag;
+    // revisit: support a new body-concat-strategy input for accumulating
+    // body parts as a release gets updated. some users will likely want this while
+    // others won't previously this was duplicating content for most which
+    // no one wants
+    const workflowBody = releaseBody(config) || "";
+    const existingReleaseBody = existingRelease.body || "";
+    let body: string;
+    if (config.input_append_body && workflowBody && existingReleaseBody) {
+      body = existingReleaseBody + "\n" + workflowBody;
     } else {
-      const tag_name = tag;
-      const name = config.input_name || tag;
-      const body = releaseBody(config);
-      const draft = config.input_draft;
-      const prerelease = config.input_prerelease;
-      const target_commitish = config.input_target_commitish;
-      let commitMessage: string = "";
-      if (target_commitish) {
-        commitMessage = ` using commit "${target_commitish}"`;
-      }
-      console.log(
-        `👩‍🏭 Creating new GitHub release for tag ${tag_name}${commitMessage}...`
-      );
-      let release = await releaser.createRelease({
+      body = workflowBody || existingReleaseBody;
+    }
+
+    const draft =
+      config.input_draft !== undefined
+        ? config.input_draft
+        : existingRelease.draft;
+    const prerelease =
+      config.input_prerelease !== undefined
+        ? config.input_prerelease
+        : existingRelease.prerelease;
+
+    if(config.input_update_tag){
+      await releaser.deleteRef({
         owner,
         repo,
-        tag_name,
-        name,
-        body,
-        draft,
-        prerelease,
-        target_commitish,
-        discussion_category_name,
-        generate_release_notes,
+        ref: "tags/"+existingRelease.tag_name,
       });
-      return release.data;
+      await releaser.createRef({
+        owner,
+        repo,
+        ref: "refs/tags/"+existingRelease.tag_name,
+        sha: config.github_sha
+      })
+
+      console.log(`Updated ref/tags/${existingRelease.tag_name} to ${config.github_sha}`);
+      
+      // give github the time to draft the release before updating it
+      // Else, I think we would have a race condition with github to update the release
+      await sleep(2000);
     }
-  } catch (error) {
-    // presume a race with competing metrix runs
-    console.log(
-      `⚠️ GitHub release failed with status: ${error.status}\n${JSON.stringify(
-        error.response.data.errors
-      )}\nretrying... (${maxRetries - 1} retries remaining)`
-    );
-    return release(config, releaser, maxRetries - 1);
+    
+    const release = await releaser.updateRelease({
+      owner,
+      repo,
+      release_id,
+      tag_name,
+      target_commitish,
+      name,
+      body,
+      draft,
+      prerelease,
+      discussion_category_name,
+      generate_release_notes,
+    });
+    return release.data;
   }
 };
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
