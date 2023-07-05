@@ -34,6 +34,11 @@ export interface Releaser {
     tag: string;
   }): Promise<{ data: Release }>;
 
+  getLatestRelease(params: {
+    owner: string;
+    repo: string;
+  }): Promise<{ data: Release }>;
+
   createRelease(params: {
     owner: string;
     repo: string;
@@ -45,6 +50,7 @@ export interface Releaser {
     target_commitish: string | undefined;
     discussion_category_name: string | undefined;
     generate_release_notes: boolean | undefined;
+    make_latest: boolean | "legacy" | undefined;
   }): Promise<{ data: Release }>;
 
   updateRelease(params: {
@@ -59,6 +65,7 @@ export interface Releaser {
     prerelease: boolean | undefined;
     discussion_category_name: string | undefined;
     generate_release_notes: boolean | undefined;
+    make_latest: boolean | "legacy" | undefined;
   }): Promise<{ data: Release }>;
 
   allReleases(params: {
@@ -94,6 +101,13 @@ export class GitHubReleaser implements Releaser {
     return this.github.rest.repos.getReleaseByTag(params);
   }
 
+  getLatestRelease(params: {
+    owner: string;
+    repo: string;
+  }): Promise<{ data: Release }> {
+    return this.github.rest.repos.getLatestRelease(params);
+  }
+
   createRelease(params: {
     owner: string;
     repo: string;
@@ -105,6 +119,7 @@ export class GitHubReleaser implements Releaser {
     target_commitish: string | undefined;
     discussion_category_name: string | undefined;
     generate_release_notes: boolean | undefined;
+    make_latest: boolean | "legacy" | undefined;
   }): Promise<{ data: Release }> {
     return this.github.rest.repos.createRelease(params);
   }
@@ -121,6 +136,7 @@ export class GitHubReleaser implements Releaser {
     prerelease: boolean | undefined;
     discussion_category_name: string | undefined;
     generate_release_notes: boolean | undefined;
+    make_latest: boolean | "legacy" | undefined;
   }): Promise<{ data: Release }> {
     return this.github.rest.repos.updateRelease(params);
   }
@@ -358,7 +374,11 @@ export const release = async (
     const prerelease =
       config.input_prerelease !== undefined
         ? config.input_prerelease
-        : existingRelease.prerelease;
+        : existingRelease.data.prerelease;
+    const make_latest =
+      config.input_make_latest !== undefined
+        ? config.input_make_latest
+        : is_latest_release;
 
     if(config.input_update_tag){
       await releaser.deleteRef({
@@ -392,8 +412,57 @@ export const release = async (
       prerelease,
       discussion_category_name,
       generate_release_notes,
+      make_latest,
     });
     return release.data;
+  } catch (error) {
+    if (error.status === 404) {
+      const tag_name = tag;
+      const name = config.input_name || tag;
+      const body = releaseBody(config);
+      const draft = config.input_draft;
+      const prerelease = config.input_prerelease;
+      const make_latest = config.input_make_latest;
+      const target_commitish = config.input_target_commitish;
+      let commitMessage: string = "";
+      if (target_commitish) {
+        commitMessage = ` using commit "${target_commitish}"`;
+      }
+      console.log(
+        `👩‍🏭 Creating new GitHub release for tag ${tag_name}${commitMessage}...`
+      );
+      try {
+        let release = await releaser.createRelease({
+          owner,
+          repo,
+          tag_name,
+          name,
+          body,
+          draft,
+          prerelease,
+          target_commitish,
+          discussion_category_name,
+          generate_release_notes,
+          make_latest,
+        });
+        return release.data;
+      } catch (error) {
+        // presume a race with competing metrix runs
+        console.log(
+          `⚠️ GitHub release failed with status: ${
+            error.status
+          }\n${JSON.stringify(error.response.data.errors)}\nretrying... (${
+            maxRetries - 1
+          } retries remaining)`
+        );
+        return release(config, releaser, maxRetries - 1);
+      }
+    } else {
+      console.log(
+        `⚠️ Unexpected error fetching GitHub release for tag ${config.github_ref}: ${error}`
+      );
+      throw error;
+    }
   }
 };
 

@@ -22,6 +22,7 @@ export interface Config {
   input_generate_release_notes?: boolean;
   input_append_body?: boolean;
   input_update_tag?: string;
+  input_make_latest?: boolean | "legacy";
 }
 
 export const uploadUrl = (url: string): string => {
@@ -78,6 +79,11 @@ export const parseConfig = (env: Env): Config => {
     input_generate_release_notes: env.INPUT_GENERATE_RELEASE_NOTES == "true",
     input_append_body: env.INPUT_APPEND_BODY == "true",
     input_update_tag: env.INPUT_UPDATE_TAG,
+    input_make_latest: env.INPUT_MAKE_LATEST
+      ? env.INPUT_MAKE_LATEST === "legacy"
+        ? "legacy"
+        : env.INPUT_MAKE_LATEST === "true"
+      : true,
   };
 };
 
