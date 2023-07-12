@@ -1,0 +1,63 @@
+      - name: Make Release
+        uses: CuteWaterBeary/action-gh-release@ff6ab387db4b6c9821451da4521b6089e74e2168
+        env:
+          GITHUB_REPOSITORY: CuteWaterBeary/repo_name
+          GITHUB_TOKEN: "x"
+        with:
+          repository: CuteWaterBeary/repo_name
+          tag_name: "tag1
+          files: |
+            ${{ env.zipFile }}
+            ${{ env.unityPackage }}
+            Packages/${{ env.packageName }}/package.json
+
+
+name: Make Github Release
+uses: CuteWaterBeary/action-gh-release@ff6ab387db4b6c9821451da4521b6089e74e2168
+
+with:
+
+  repository: username/repo_name
+
+  # Authorized secret GitHub Personal Access Token.
+  token: ${{ github.token }}
+
+  # Gives the release a custom name. Defaults to tag name
+  # name: optional
+
+  # Tag under which to release
+  tag_name: tagName
+
+  # Update the tag of the release to the current commit. This will also update the release time.
+  update_tag: false
+
+  # Whether to automatically generate the name and body for this release. If name is specified, the specified name will be used; otherwise, a name will be automatically generated. If body is specified, the body will be pre-pended to the automatically generated notes.
+  generate_release_notes: true
+
+  # Append to body instead of overwriting
+  append_body: true
+
+  # "Newline-delimited list of path globs for asset files to upload"
+  files: |
+    ${{ env.zipFile }}
+    ${{ env.unityPackage }}
+    Packages/${{ env.packageName }}/package.json
+
+  overwrite_files: true
+
+  fail_on_unmatched_files: true
+
+
+
+# env:
+  # "GITHUB_TOKEN": "As provided by Github Actions"
+
+# outputs:
+#   url:
+#     description: "URL to the Release HTML Page"
+#   id:
+#     description: "Release ID"
+#   upload_url:
+#     description: "URL for uploading assets to the release"
+#   assets:
+#     description: "JSON array containing information about each uploaded asset, in the format given [here](https://docs.github.com/en/rest/reference/repos#upload-a-release-asset--code-samples) (minus the `uploader` field)"
